@@ -83,7 +83,6 @@ sub create_options_hash($) {
     return \%options_hash;
 }
 
-
 sub remove_item_from_array($$) {
     my ($item, $ry_ref) = @_;
     my @ry = @{$ry_ref};
@@ -96,6 +95,34 @@ sub remove_item_from_array($$) {
         }
     }
     #print "new ry: @new_ry\n";
+    return(\@new_ry);
+}
+
+sub remove_options($$) {
+    my $orientations_ref = shift(@_);
+    my $remove_coords_ref = shift(@_);
+    
+    my @new_ry = ();
+     for my $o_coord_set (@{$orientations_ref}) {
+        my @coords = @{$o_coord_set};
+        my @saved_coords = ();
+        #print "--\n";
+        my $match_count = 0;
+        for my $c (@coords) {
+            my ($cx, $cy) = @{$c};
+            for my $remove_set (@{$remove_coords_ref}) {
+                my ($remove_x, $remove_y) = @{$remove_set};
+                #print "does $cx, $cy match $remove_x, $remove_y?\n";
+                if (!($cx == $remove_x && $cy == $remove_y)) {
+                    $match_count++;
+                }
+            }
+        }
+        if($match_count != @coords) {
+            push(@new_ry, \@coords);
+        }
+    }
+    
     return(\@new_ry);
 }
 
@@ -112,8 +139,30 @@ sub is_neighbor($$$$) {
     return $neighbor;
 }
 
+sub find_matching_word($$$) {
+    my $word_list_ref = shift(@_);
+    my $new_char_index = shift(@_);
+    my $orig_char = shift(@_);
+    
+    my @words = @{$word_list_ref};
+    
+    my @ry = ();
+    for my $w (@words) {
+        #print "does this word '$w' have '$orig_char' at position $new_char_index?\n";
+        my $candidate_letter = substr($w, $new_char_index, 1);
+        if ($candidate_letter eq $orig_char) {
+            #print "Yes!\n";
+            push(@ry, $w);
+        #} else {
+        #   print "No... $candidate_letter does not equal $orig_char\n";
+        }
+    }
+    
+    return (\@ry);
+}
+
 sub find_word_intersect($$$$$$$) {
-    my $word = shift(@_);
+    my $word_char = shift(@_);
     my $x = shift(@_);
     my $y = shift(@_);
     my $word_orient = shift(@_);
@@ -122,10 +171,108 @@ sub find_word_intersect($$$$$$$) {
     my $found_ref = shift(@_);
     
     my %opts = %{$opt_ref};
+    my %lens = %{$length_hash_ref};
+    my @found_ry = @{$found_ref};
     
-    if(keys(%opts) == 0) {
+    my @remaining_words = ();
+    for my $w_len (keys(%lens)) {
+        for my $w_with_len (@{$lens{$w_len}}) {
+            push(@remaining_words, $w_with_len);
+        }
+    }
+    
+    print "remaining_words: ".@remaining_words."\n";
+    if(@remaining_words == 0) {
         print "Found everything!\n";
         return $found_ref;
+    } else {
+        my $new_orient = "row";
+        if ($word_orient eq $new_orient) {
+            $new_orient = "col";
+        }
+        print "#######################\n";
+        print "I will be looking for a new word within a $new_orient\n";
+        print "This new word will intersect with $word_char\n";
+        print "Does the intersection happen at ($x, $y)?\n";
+        print "Available words: \n";
+        for my $len (keys(%lens)) {
+            print "- Length $len:\n";
+            for my $w_ref ($lens{$len}) {
+                for my $w (@{$w_ref}) {
+                    print "   $w\n";
+                }
+            }
+        }
+        
+        for my $o_coord_set (@{$opts{$new_orient}}) {
+            print "---\n";
+            my @coords = @{$o_coord_set};
+            my $char_index = 0;
+            for my $c (@coords) {
+                my ($cx, $cy) = @{$c};
+                print "$cx, $cy\n";
+                if ($cx == $x && $cy == $y) {
+                    print "Found a matching coord!\n";
+                    print "Position is $char_index\n";
+                    print "Word length is ".@coords."\n";
+                    my @candidates = @{find_matching_word($lens{@coords}, $char_index, $word_char)};
+                    
+                    if (@candidates == 1) {
+                        ## cleanup
+                        my $found_word = $candidates[0];
+                        
+                        print "cleaning up.... for $found_word\n";
+                        my @found_coords = @{$o_coord_set};
+                        my $found_orient = $new_orient;
+        
+                        for (my $f_index=0; $f_index < @found_coords; $f_index++) {
+                            my ($f_x, $f_y) = @{$found_coords[$f_index]};
+                            my $f_char = substr($found_word,$f_index,1);
+                            $found_ry[$f_x][$f_y] = $f_char;
+                            print "saving $f_x, $f_y as $f_char\n";
+                        }
+                        #for (my $fi=0; $fi < @found_ry; $fi++) {
+                        #    for (my $fj=0; $fj < @{$found_ry[$fi]}; $fj++) {
+                        #        print "$fi, $fj : $found_ry[$fi][$fj]\n";
+                        #    }
+                        #}
+                        
+                        my $found_word_length = length($found_word);
+                        my $new_word_len_ref = remove_item_from_array($found_word, $lens{$found_word_length});
+                        
+                        $lens{$found_word_length} = $new_word_len_ref;
+                        
+                        $opts{$found_orient} = remove_options($opts{$found_orient}, \@found_coords);
+                        
+                        #print "REMOVAL. now options: \n";
+                        #for my $orient (@orientations) {
+                        #    print "$orient ::\n";
+                        #    for my $o_coord_set (@{$options_hash{$orient}}) {
+                        #        print "---\n";
+                        #        my @coords = @{$o_coord_set};
+                        #        for my $c (@coords) {
+                        #            my ($cx, $cy) = @{$c};
+                        #            print "$cx, $cy\n";
+                        #        }
+                        #    }
+                        #}
+                        
+                        my $new_char_index = 0;
+                        #for my $coord_set (@found_coords) {
+                        my $coord_set = $found_coords[0];
+                            my ($x, $y) = @{$coord_set};
+                            print "new fxn call ::: $x and $y\n";
+                            find_word_intersect(substr($found_word,$new_char_index,1), $x, $y, $found_orient, 
+                            \%lens, \%opts, \@found_ry);
+                            $new_char_index++;
+                        #}
+                    }
+                }
+                $char_index++;
+            }
+        }
+        
+        return \@found_ry;
     }
     
 }
@@ -152,7 +299,6 @@ for my $orient (@orientations) {
 }
 
 
-
 #my ($x,$y,$a,$b) = (1,2,1,3);
 my ($x,$y,$a,$b) = (1,2,1,4);
 my $neighbor_result = is_neighbor($x,$y,$a,$b);
@@ -161,25 +307,61 @@ print "$neighbor_result\n";
 my @w_choices = ('BOB','ODD','DO');
 my %length_hash = %{create_length_hash(\@w_choices)};
 
-my %found_hash = ();
+my @found_ry = (["-","-","-","-"],["-","-","-","-"],["-","-","-","-"],["-","-","-","-"]);
 
+$found_ry[2][3] = "D";
+$found_ry[3][3] = "0";
 
-my @found_coords = ([1,3],[2,3]);
+my @found_coords = ([2,3],[3,3]);
 my $found_word = "DO";
 my $found_orient = "col";
-my $new_ry_ref = remove_item_from_array($found_word,\@w_choices);
 
-@w_choices = @{$new_ry_ref};
+###############
+    ## cleanup
+    my $new_ry_ref = remove_item_from_array($found_word,\@w_choices);
+    my $found_word_length = length($found_word);
+    my $new_word_len_ref = remove_item_from_array($found_word, $length_hash{$found_word_length});
+    
+    
+    @w_choices = @{$new_ry_ref};
+    $length_hash{$found_word_length} = $new_word_len_ref;
+    
+    print "now choices: @w_choices\n";
+    
+    $options_hash{$found_orient} = remove_options($options_hash{$found_orient}, \@found_coords);
+    
+    print "REMOVAL. now options: \n";
+    for my $orient (@orientations) {
+        print "$orient ::\n";
+        for my $o_coord_set (@{$options_hash{$orient}}) {
+            print "---\n";
+            my @coords = @{$o_coord_set};
+            for my $c (@coords) {
+                my ($cx, $cy) = @{$c};
+                print "$cx, $cy\n";
+            }
+        }
+    }
+################
 
-print "now choices: @w_choices\n";
 
 ## go through each of the found coordinates
 ## search for intersecting words by coord and letter
-for my $coord_set (@found_coords) {
+my $char_index = 0;
+#for my $coord_set (@found_coords) {
+my $coord_set = $found_coords[0];
     my ($x, $y) = @{$coord_set};
     print "$x and $y\n";
-    #find_word_intersect($found_word, $x, $y, $found_orient, 
-    #\%length_hash, \%options_hash, \%found_hash);
+    my @final_found = @{find_word_intersect(substr($found_word,$char_index,1), $x, $y, $found_orient, 
+    \%length_hash, \%options_hash, \@found_ry)};
+    $char_index++;
+#}
+print "#######################\n";
+print "#######################\n";
+print "#######################\n";
+
+for (my $fi=0; $fi < @final_found; $fi++) {
+    print join('', @{$final_found[$fi]})."\n";
 }
 
 
