@@ -1,7 +1,4 @@
-#!/usr/bin/perl
-
 use strict;
-use warnings;
 
 ## create_length_hash
 ## input: array of words
@@ -139,6 +136,28 @@ sub is_neighbor($$$$) {
     return $neighbor;
 }
 
+sub find_coords_with_wordlen($$) {
+    my $options_hash_ref = shift(@_);
+    my $wordlen = shift(@_);
+    
+    my %options_hash = %{$options_hash_ref};
+    my @orientations = keys(%options_hash);
+    
+    my $coords_of_interest_ref = "";
+    
+    for my $orient (@orientations) {
+        #print "$orient ::\n";
+        for my $o_coord_set (@{$options_hash{$orient}}) {
+            #print "---\n";
+            my @coords = @{$o_coord_set};
+            if (@coords == $wordlen) {
+                $coords_of_interest_ref = $o_coord_set;
+            }
+        }
+    }
+    
+    return $coords_of_interest_ref;
+}
 sub find_matching_word($$$) {
     my $word_list_ref = shift(@_);
     my $new_char_index = shift(@_);
@@ -159,6 +178,20 @@ sub find_matching_word($$$) {
     }
     
     return (\@ry);
+}
+
+sub save_found_word_coords($$$) {
+    my $found_word = shift(@_);
+    my @found_coords = @{shift(@_)};
+    my @found_ry = @{shift(@_)};
+    
+    for (my $f_index=0; $f_index < @found_coords; $f_index++) {
+        my ($f_x, $f_y) = @{$found_coords[$f_index]};
+        my $f_char = substr($found_word,$f_index,1);
+        $found_ry[$f_x][$f_y] = $f_char;
+        print "saving $f_x, $f_y as $f_char\n";
+    }
+    return \@found_ry;
 }
 
 sub find_word_intersect($$$$$$$) {
@@ -225,17 +258,7 @@ sub find_word_intersect($$$$$$$) {
                         my @found_coords = @{$o_coord_set};
                         my $found_orient = $new_orient;
         
-                        for (my $f_index=0; $f_index < @found_coords; $f_index++) {
-                            my ($f_x, $f_y) = @{$found_coords[$f_index]};
-                            my $f_char = substr($found_word,$f_index,1);
-                            $found_ry[$f_x][$f_y] = $f_char;
-                            print "saving $f_x, $f_y as $f_char\n";
-                        }
-                        #for (my $fi=0; $fi < @found_ry; $fi++) {
-                        #    for (my $fj=0; $fj < @{$found_ry[$fi]}; $fj++) {
-                        #        print "$fi, $fj : $found_ry[$fi][$fj]\n";
-                        #    }
-                        #}
+                        @found_ry = @{save_found_word_coords($found_word, $o_coord_set, \@found_ry)};
                         
                         my $found_word_length = length($found_word);
                         my $new_word_len_ref = remove_item_from_array($found_word, $lens{$found_word_length});
@@ -244,27 +267,14 @@ sub find_word_intersect($$$$$$$) {
                         
                         $opts{$found_orient} = remove_options($opts{$found_orient}, \@found_coords);
                         
-                        #print "REMOVAL. now options: \n";
-                        #for my $orient (@orientations) {
-                        #    print "$orient ::\n";
-                        #    for my $o_coord_set (@{$options_hash{$orient}}) {
-                        #        print "---\n";
-                        #        my @coords = @{$o_coord_set};
-                        #        for my $c (@coords) {
-                        #            my ($cx, $cy) = @{$c};
-                        #            print "$cx, $cy\n";
-                        #        }
-                        #    }
-                        #}
-                        
                         my $new_char_index = 0;
                         #for my $coord_set (@found_coords) {
                         my $coord_set = $found_coords[0];
-                            my ($x, $y) = @{$coord_set};
-                            print "new fxn call ::: $x and $y\n";
-                            find_word_intersect(substr($found_word,$new_char_index,1), $x, $y, $found_orient, 
-                            \%lens, \%opts, \@found_ry);
-                            $new_char_index++;
+                        my ($x, $y) = @{$coord_set};
+                        print "new fxn call ::: $x and $y\n";
+                        find_word_intersect(substr($found_word,$new_char_index,1), $x, $y, $found_orient, 
+                        \%lens, \%opts, \@found_ry);
+                        #$new_char_index++;
                         #}
                     }
                 }
@@ -309,11 +319,37 @@ my %length_hash = %{create_length_hash(\@w_choices)};
 
 my @found_ry = (["-","-","-","-"],["-","-","-","-"],["-","-","-","-"],["-","-","-","-"]);
 
-$found_ry[2][3] = "D";
-$found_ry[3][3] = "0";
 
-my @found_coords = ([2,3],[3,3]);
-my $found_word = "DO";
+my $found_word = "";
+my @found_coords = ();
+
+## go through length hash array 
+## and see if there are any word lengths with only one word
+for my $len (keys(%length_hash)) {
+    print "length is $len\n";
+    my @num_words = @{$length_hash{$len}};
+    print "\t has ".@num_words." num words\n";
+    if (@num_words == 1) {
+        $found_word = $num_words[0];
+        my $found_coords_ref = find_coords_with_wordlen(\%options_hash, $len);
+        @found_coords = @{$found_coords_ref};
+        my $char_index = 0;
+        for my $coord_set (@found_coords) {
+            my ($c_x, $c_y) = @{$coord_set};
+            $found_ry[$c_x][$c_y] = substr($found_word, $char_index++,1);
+            #print "$found_word must be at $c_x and $c_y\n";
+        }
+    }
+}
+
+## TODO: find the orientation of the found coordinates
+## TODO: if any of the words are not a unique length, choose one
+
+#$found_ry[2][3] = "D";
+#$found_ry[3][3] = "0";
+
+#my @found_coords = ([2,3],[3,3]);
+#my $found_word = "DO";
 my $found_orient = "col";
 
 ###############
@@ -364,32 +400,3 @@ for (my $fi=0; $fi < @final_found; $fi++) {
     print join('', @{$final_found[$fi]})."\n";
 }
 
-
-
-
-
-# Complete the crosswordPuzzle function below.
-sub crosswordPuzzle {
-
-
-}
-
-open(my $fptr, '>', $ENV{'OUTPUT_PATH'});
-
-my @crossword = ();
-
-for (1..10) {
-    my $crossword_item = <>;
-    chomp($crossword_item);
-    push @crossword, $crossword_item;
-}
-
-my $words = <>;
-chomp($words);
-
-my @result = crosswordPuzzle \@crossword, $words;
-
-print $fptr join "\n", @result;
-print $fptr "\n";
-
-close $fptr;
