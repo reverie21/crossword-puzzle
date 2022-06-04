@@ -1,0 +1,6 @@
+print_formatted(1)
+print_formatted(2)
+print("\n")
+print_formatted(17)
+print("\n")
+print_formatted(99)
